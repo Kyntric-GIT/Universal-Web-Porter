@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import {
-  Activity, Archive, ArrowUpRight, Box, CheckCircle2,
+  Activity, Archive, ArrowUpRight, CheckCircle2,
   ChevronRight, CircleHelp, CloudUpload, Cpu, File,
-  FileArchive, FileCode2, FolderOpen, Gamepad2, HardDrive,
+  FileCode2, FolderOpen, Gamepad2, HardDrive,
   LayoutDashboard, Play, Plus, Search, Settings,
   ShieldCheck, Sparkles, Upload, X
 } from "lucide-react";
