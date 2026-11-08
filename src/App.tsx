@@ -256,7 +256,7 @@ export default function App() {
             <>
               <div className="page-heading"><div><div className="eyebrow"><Activity size={14} /> DIAGNOSTICS</div><h1>Compatibility <span>Center</span></h1><p>Review detected formats and browser runtime requirements.</p></div></div>
               <div className="info-panel"><Cpu size={22} /><div><strong>Compatibility analyzer v0.1</strong><p>Currently performs basic filename-based format identification. Deeper file inspection and runtime verification are coming next.</p></div></div>
-              {games.length === 0 ? <div className="empty-state"><Activity size={28} /><strong>No files to analyze</strong><p>Import a game to view its detected format.</p></div> : <div className="game-list">{games.map(game => <GameRow key={game.id} game={game} /></div>)}
+              {games.length === 0 ? <div className="empty-state"><Activity size={28} /><strong>No files to analyze</strong><p>Import a game to view its detected format.</p></div> : <div className="game-list">{games.map(game => <GameRow key={game.id} game={game} />)}</div>}
             </>
           )}
 
