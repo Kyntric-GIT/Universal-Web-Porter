@@ -1,3 +1,4 @@
+
 import { useRef, useState } from "react";
 import { analyzeGameFile, type AnalysisResult } from "./lib/analyzer";
 import {
@@ -15,9 +16,16 @@ type GameFile = {
   type: string;
   status: string;
   platform: string;
+  analysis: AnalysisResult;
 };
 
-type Page = "Dashboard" | "Import Game" | "My Games" | "Compatibility" | "Browser Player" | "Settings";
+type Page =
+  | "Dashboard"
+  | "Import Game"
+  | "My Games"
+  | "Compatibility"
+  | "Browser Player"
+  | "Settings";
 
 const navigation: { name: Page; icon: typeof LayoutDashboard }[] = [
   { name: "Dashboard", icon: LayoutDashboard },
@@ -27,30 +35,6 @@ const navigation: { name: Page; icon: typeof LayoutDashboard }[] = [
   { name: "Browser Player", icon: Play },
   { name: "Settings", icon: Settings }
 ];
-
-function identifyFile(name: string) {
-  const ext = name.split(".").pop()?.toLowerCase() || "";
-
-  const formats: Record<string, { type: string; platform: string; status: string }> = {
-    exe: { type: "Windows executable", platform: "Windows", status: "Needs analysis" },
-    wasm: { type: "WebAssembly module", platform: "Browser", status: "Browser compatible format" },
-    html: { type: "HTML game", platform: "Browser", status: "Browser compatible format" },
-    zip: { type: "Compressed archive", platform: "Unknown", status: "Needs extraction" },
-    pck: { type: "Godot package", platform: "Godot", status: "Needs engine runtime" },
-    pak: { type: "Unreal package", platform: "Unreal Engine", status: "Asset package detected" },
-    unity3d: { type: "Unity package", platform: "Unity", status: "Needs analysis" },
-    glb: { type: "3D model", platform: "WebGL", status: "Asset format detected" },
-    gltf: { type: "3D model", platform: "WebGL", status: "Asset format detected" },
-    json: { type: "JSON data", platform: "Unknown", status: "Needs analysis" },
-    data: { type: "Game data", platform: "Unknown", status: "Needs analysis" }
-  };
-
-  return formats[ext] || {
-    type: ext ? `.${ext} file` : "Unknown file",
-    platform: "Unknown",
-    status: "Needs analysis"
-  };
-}
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -70,17 +54,21 @@ export default function App() {
     if (!fileList?.length) return;
 
     const imported = Array.from(fileList).map(file => {
-      const info = identifyFile(file.name);
+      const analysis = analyzeGameFile(file);
+
       return {
         id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
         name: file.name,
         size: file.size,
-        ...info
+        type: analysis.detectedFormat,
+        status: analysis.compatibility,
+        platform: analysis.engine,
+        analysis
       };
     });
 
     setGames(previous => [...previous, ...imported]);
-    setMessage(`${imported.length} file(s) imported successfully.`);
+    setMessage(`${imported.length} file(s) analyzed.`);
     setPage("My Games");
   }
 
@@ -90,9 +78,21 @@ export default function App() {
 
   const stats = [
     { label: "Imported Files", value: games.length, icon: Archive },
-    { label: "Browser Formats", value: games.filter(g => g.platform === "Browser").length, icon: FileCode2 },
-    { label: "Needs Analysis", value: games.filter(g => g.status === "Needs analysis").length, icon: Activity },
-    { label: "Total Storage", value: formatSize(games.reduce((sum, g) => sum + g.size, 0)), icon: HardDrive }
+    {
+      label: "Browser Formats",
+      value: games.filter(g => g.analysis.compatibility === "Browser-ready candidate").length,
+      icon: FileCode2
+    },
+    {
+      label: "Needs Porting",
+      value: games.filter(g => g.analysis.compatibility === "Requires porting").length,
+      icon: Activity
+    },
+    {
+      label: "Total Storage",
+      value: formatSize(games.reduce((sum, g) => sum + g.size, 0)),
+      icon: HardDrive
+    }
   ];
 
   return (
@@ -136,7 +136,9 @@ export default function App() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumb">PORTER <ChevronRight size={13} /> <strong>{page.toUpperCase()}</strong></div>
+          <div className="breadcrumb">
+            PORTER <ChevronRight size={13} /> <strong>{page.toUpperCase()}</strong>
+          </div>
           <div className="topbar-right">
             <span className="online-indicator"><span /> LOCAL WORKSPACE</span>
             <button className="icon-button" title="Help"><CircleHelp size={19} /></button>
@@ -182,33 +184,55 @@ export default function App() {
               <section className="section">
                 <div className="section-heading">
                   <div><h2>Import a game</h2><p>Start with a game file or archive.</p></div>
-                  <button className="text-button" onClick={() => setPage("Import Game")}>Open importer <ArrowUpRight size={15} /></button>
+                  <button className="text-button" onClick={() => setPage("Import Game")}>
+                    Open importer <ArrowUpRight size={15} />
+                  </button>
                 </div>
+
                 <div
                   className={`drop-zone ${dragging ? "dragging" : ""}`}
                   onDragOver={e => { e.preventDefault(); setDragging(true); }}
                   onDragLeave={() => setDragging(false)}
-                  onDrop={e => { e.preventDefault(); setDragging(false); importFiles(e.dataTransfer.files); }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    setDragging(false);
+                    importFiles(e.dataTransfer.files);
+                  }}
                   onClick={() => fileInput.current?.click()}
                 >
                   <div className="upload-icon"><CloudUpload size={29} /></div>
                   <h3>Drop your game files here</h3>
                   <p>Or click to browse your device</p>
                   <span className="format-label">EXE · ZIP · WASM · HTML · PCK · PAK · GLB · MORE</span>
-                  <input ref={fileInput} type="file" multiple hidden onChange={e => importFiles(e.target.files)} />
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    multiple
+                    hidden
+                    onChange={e => importFiles(e.target.files)}
+                  />
                 </div>
               </section>
 
               <section className="section">
                 <div className="section-heading">
                   <div><h2>Recently imported</h2><p>Your latest game files.</p></div>
-                  <button className="text-button" onClick={() => setPage("My Games")}>View library <ArrowUpRight size={15} /></button>
+                  <button className="text-button" onClick={() => setPage("My Games")}>
+                    View library <ArrowUpRight size={15} />
+                  </button>
                 </div>
+
                 {games.length === 0 ? (
-                  <div className="empty-state"><FolderOpen size={28} /><strong>No games imported yet</strong><p>Import a game to start building your library.</p></div>
+                  <div className="empty-state">
+                    <FolderOpen size={28} />
+                    <strong>No games imported yet</strong>
+                    <p>Import a game to start building your library.</p>
+                  </div>
                 ) : (
                   <div className="game-list">
-                    {games.slice(-4).reverse().map(game => <GameRow key={game.id} game={game} />)}
+                    {games.slice(-4).reverse().map(game => (
+                      <GameRow key={game.id} game={game} />
+                    ))}
                   </div>
                 )}
               </section>
@@ -222,22 +246,37 @@ export default function App() {
                 <h1>Import <span>Game</span></h1>
                 <p>Select game files to begin compatibility analysis.</p>
               </div>
+
               <div
                 className="drop-zone large-drop"
                 onDragOver={e => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
-                onDrop={e => { e.preventDefault(); setDragging(false); importFiles(e.dataTransfer.files); }}
+                onDrop={e => {
+                  e.preventDefault();
+                  setDragging(false);
+                  importFiles(e.dataTransfer.files);
+                }}
                 onClick={() => fileInput.current?.click()}
               >
                 <div className="upload-icon"><Upload size={32} /></div>
                 <h3>Choose your game files</h3>
                 <p>Drag and drop files here or browse your device.</p>
                 <span className="format-label">MULTIPLE FILES SUPPORTED</span>
-                <input ref={fileInput} type="file" multiple hidden onChange={e => importFiles(e.target.files)} />
+                <input
+                  ref={fileInput}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={e => importFiles(e.target.files)}
+                />
               </div>
+
               <div className="info-panel">
                 <ShieldCheck size={20} />
-                <div><strong>Safe file handling</strong><p>Files are selected for analysis, not automatically executed. Browser compatibility must be verified before running a game.</p></div>
+                <div>
+                  <strong>Safe file handling</strong>
+                  <p>Files are selected for analysis, not automatically executed. Browser compatibility must be verified before running a game.</p>
+                </div>
               </div>
             </div>
           )}
@@ -245,34 +284,123 @@ export default function App() {
           {page === "My Games" && (
             <>
               <div className="page-heading">
-                <div><div className="eyebrow"><Archive size={14} /> YOUR LIBRARY</div><h1>My <span>Games</span></h1><p>Manage your imported game files.</p></div>
-                <button className="primary-button" onClick={() => setPage("Import Game")}><Plus size={17} /> Import Game</button>
+                <div>
+                  <div className="eyebrow"><Archive size={14} /> YOUR LIBRARY</div>
+                  <h1>My <span>Games</span></h1>
+                  <p>Manage your imported game files.</p>
+                </div>
+                <button className="primary-button" onClick={() => setPage("Import Game")}>
+                  <Plus size={17} /> Import Game
+                </button>
               </div>
-              <div className="search-bar"><Search size={18} /><input placeholder="Search imported files..." value={search} onChange={e => setSearch(e.target.value)} /></div>
-              {filteredGames.length === 0 ? <div className="empty-state"><FolderOpen size={28} /><strong>{games.length ? "No matching files" : "Your library is empty"}</strong><p>Import files to see them here.</p></div> : <div className="game-list">{filteredGames.map(game => <GameRow key={game.id} game={game} onRemove={() => setGames(old => old.filter(g => g.id !== game.id))} />)}</div>}
+
+              <div className="search-bar">
+                <Search size={18} />
+                <input
+                  placeholder="Search imported files..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
+
+              {filteredGames.length === 0 ? (
+                <div className="empty-state">
+                  <FolderOpen size={28} />
+                  <strong>{games.length ? "No matching files" : "Your library is empty"}</strong>
+                  <p>Import files to see them here.</p>
+                </div>
+              ) : (
+                <div className="game-list">
+                  {filteredGames.map(game => (
+                    <GameRow
+                      key={game.id}
+                      game={game}
+                      onRemove={() => setGames(old => old.filter(g => g.id !== game.id))}
+                    />
+                  ))}
+                </div>
+              )}
             </>
           )}
 
           {page === "Compatibility" && (
             <>
-              <div className="page-heading"><div><div className="eyebrow"><Activity size={14} /> DIAGNOSTICS</div><h1>Compatibility <span>Center</span></h1><p>Review detected formats and browser runtime requirements.</p></div></div>
-              <div className="info-panel"><Cpu size={22} /><div><strong>Compatibility analyzer v0.1</strong><p>Currently performs basic filename-based format identification. Deeper file inspection and runtime verification are coming next.</p></div></div>
-              {games.length === 0 ? <div className="empty-state"><Activity size={28} /><strong>No files to analyze</strong><p>Import a game to view its detected format.</p></div> : <div className="game-list">{games.map(game => <GameRow key={game.id} game={game} />)}</div>}
+              <div className="page-heading">
+                <div>
+                  <div className="eyebrow"><Activity size={14} /> DIAGNOSTICS</div>
+                  <h1>Compatibility <span>Center</span></h1>
+                  <p>Review detected formats and browser runtime requirements.</p>
+                </div>
+              </div>
+
+              <div className="info-panel">
+                <Cpu size={22} />
+                <div>
+                  <strong>Compatibility analyzer v0.1</strong>
+                  <p>Currently performs basic file-extension identification. Deeper file inspection and runtime verification are coming next.</p>
+                </div>
+              </div>
+
+              {games.length === 0 ? (
+                <div className="empty-state">
+                  <Activity size={28} />
+                  <strong>No files to analyze</strong>
+                  <p>Import a game to view its detected format.</p>
+                </div>
+              ) : (
+                <div className="game-list">
+                  {games.map(game => <GameRow key={game.id} game={game} />)}
+                </div>
+              )}
             </>
           )}
 
           {page === "Browser Player" && (
             <>
-              <div className="page-heading"><div><div className="eyebrow"><Play size={14} /> GAME RUNTIME</div><h1>Browser <span>Player</span></h1><p>Play games supported by compatible browser runtimes.</p></div></div>
-              <div className="player-placeholder"><div className="player-icon"><Gamepad2 size={42} /></div><h2>Player workspace</h2><p>No compatible game runtime is connected yet.</p><span>WASM AND HTML5 RUNTIMES COMING NEXT</span></div>
+              <div className="page-heading">
+                <div>
+                  <div className="eyebrow"><Play size={14} /> GAME RUNTIME</div>
+                  <h1>Browser <span>Player</span></h1>
+                  <p>Play games supported by compatible browser runtimes.</p>
+                </div>
+              </div>
+
+              <div className="player-placeholder">
+                <div className="player-icon"><Gamepad2 size={42} /></div>
+                <h2>Player workspace</h2>
+                <p>No compatible game runtime is connected yet.</p>
+                <span>WASM AND HTML5 RUNTIMES COMING NEXT</span>
+              </div>
             </>
           )}
 
           {page === "Settings" && (
             <>
-              <div className="page-heading"><div><div className="eyebrow"><Settings size={14} /> PREFERENCES</div><h1>Porter <span>Settings</span></h1><p>Application information and workspace preferences.</p></div></div>
-              <div className="settings-card"><strong>Application</strong><div><span>Version</span><b>0.1.0</b></div><div><span>Frontend</span><b>React + TypeScript</b></div><div><span>Graphics</span><b>Three.js</b></div><div><span>Execution target</span><b>WebAssembly / Browser</b></div></div>
-              <div className="settings-card"><strong>Workspace</strong><div><span>Imported files</span><b>{games.length}</b></div><div><span>Storage used by imported files</span><b>{formatSize(games.reduce((sum, g) => sum + g.size, 0))}</b></div><div><span>Storage persistence</span><b>Session only (initial version)</b></div></div>
+              <div className="page-heading">
+                <div>
+                  <div className="eyebrow"><Settings size={14} /> PREFERENCES</div>
+                  <h1>Porter <span>Settings</span></h1>
+                  <p>Application information and workspace preferences.</p>
+                </div>
+              </div>
+
+              <div className="settings-card">
+                <strong>Application</strong>
+                <div><span>Version</span><b>0.1.0</b></div>
+                <div><span>Frontend</span><b>React + TypeScript</b></div>
+                <div><span>Graphics</span><b>Three.js</b></div>
+                <div><span>Execution target</span><b>WebAssembly / Browser</b></div>
+              </div>
+
+              <div className="settings-card">
+                <strong>Workspace</strong>
+                <div><span>Imported files</span><b>{games.length}</b></div>
+                <div>
+                  <span>Storage used by imported files</span>
+                  <b>{formatSize(games.reduce((sum, g) => sum + g.size, 0))}</b>
+                </div>
+                <div><span>Storage persistence</span><b>Session only (initial version)</b></div>
+              </div>
             </>
           )}
         </div>
@@ -281,8 +409,13 @@ export default function App() {
   );
 }
 
-
-function GameRow({ game, onRemove }: { game: GameFile; onRemove?: () => void }) {
+function GameRow({
+  game,
+  onRemove
+}: {
+  game: GameFile;
+  onRemove?: () => void;
+}) {
   return (
     <div className="game-row">
       <div className="file-icon"><File size={21} /></div>
