@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { analyzeGameFile, type AnalysisResult } from "./lib/analyzer";
 import {
   Activity, Archive, ArrowUpRight, CheckCircle2,
   ChevronRight, CircleHelp, CloudUpload, Cpu, File,
@@ -280,14 +281,32 @@ export default function App() {
   );
 }
 
+
 function GameRow({ game, onRemove }: { game: GameFile; onRemove?: () => void }) {
   return (
     <div className="game-row">
       <div className="file-icon"><File size={21} /></div>
-      <div className="game-info"><strong>{game.name}</strong><span>{game.type} · {formatSize(game.size)}</span></div>
+
+      <div className="game-info">
+        <strong>{game.name}</strong>
+        <span>{game.type} · {formatSize(game.size)}</span>
+        <span>Engine: {game.analysis.engine}</span>
+        <span>{game.analysis.explanation}</span>
+        <span>Next: {game.analysis.recommendation}</span>
+      </div>
+
       <div className="game-platform">{game.platform}</div>
       <span className="status-label">{game.status}</span>
-      {onRemove && <button className="remove-button" title="Remove file" onClick={onRemove}><X size={16} /></button>}
+
+      {onRemove && (
+        <button
+          className="remove-button"
+          title="Remove file"
+          onClick={onRemove}
+        >
+          <X size={16} />
+        </button>
+      )}
     </div>
   );
 }
